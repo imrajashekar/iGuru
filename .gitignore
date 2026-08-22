@@ -1,0 +1,4 @@
+.env
+.coach_sessions/
+.iguru_window.json
+__pycache__/
