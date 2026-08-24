@@ -58,6 +58,8 @@ class CoachApp:
         self.started = False
         self.expanded = False
         self.mode_var = tk.StringVar(value="Combined")
+        self.coaching_style_var = tk.StringVar(value="Standard")
+        self.selected_coaching_style = "standard"
 
         self._build_launcher()
         self._build_panel()
@@ -139,6 +141,21 @@ class CoachApp:
         )
         self.start_button.pack(side="right")
 
+        style_controls = tk.Frame(self.panel, bg=BG)
+        style_controls.pack(fill="x", padx=12, pady=(0, 6), before=controls)
+        tk.Label(
+            style_controls, text="Teaching style", bg=BG, fg=MUTED,
+            font=("Segoe UI", 9),
+        ).pack(side="left")
+        self.style_picker = ttk.Combobox(
+            style_controls,
+            textvariable=self.coaching_style_var,
+            values=("Standard", "Engaging"),
+            state="readonly",
+            width=11,
+        )
+        self.style_picker.pack(side="left", padx=19)
+
         self.transcript = ScrolledText(
             self.panel, wrap="word", bg="#0b1220", fg=TEXT, insertbackground=TEXT,
             relief="flat", font=("Segoe UI", 10), padx=12, pady=12, state="disabled",
@@ -168,7 +185,7 @@ class CoachApp:
             font=("Segoe UI", 10),
         )
         self.entry.pack(side="left", fill="x", expand=True, ipady=9)
-        self.entry.bind("<Return>", lambda _event: self.send_message())
+        self.entry.bind("<Return>", self._send_from_enter)
         tk.Button(
             composer, text="Send", command=self.send_message, bg=ACCENT, fg=TEXT,
             activebackground=ACCENT_HOVER, activeforeground=TEXT, relief="flat",
@@ -274,8 +291,11 @@ class CoachApp:
             return False
         self.started = True
         mode = self.mode_var.get().lower()
+        self.selected_coaching_style = self.coaching_style_var.get().lower()
         self.mode_picker.configure(state="disabled")
+        self.style_picker.configure(state="disabled")
         self.start_button.configure(text="Monitoring active", state="disabled")
+        self._append("system", f"Teaching style: {self.selected_coaching_style.title()}")
         if mode in {"file", "combined"}:
             self._append("system", f"Watching files in {self.watch_root}")
             threading.Thread(
@@ -285,21 +305,27 @@ class CoachApp:
             self.activity.last_code_activity = time.monotonic()
             self._append("system", "Screen help is active. Ctrl+Alt+H requests help.")
             threading.Thread(
-                target=watch_for_stuck, args=(self.events, self.activity, 120.0), daemon=True
+                target=watch_for_stuck, args=(self.events, self.activity, 300.0), daemon=True
             ).start()
             threading.Thread(target=listen_for_help_hotkey, args=(self.events,), daemon=True).start()
-        self.agent_requests.put(("initialize", None))
+        self.agent_requests.put(("initialize", self.selected_coaching_style))
         return True
 
     def send_message(self) -> None:
         message = self.entry.get().strip()
         if not message:
             return
+        geometry_before_send = self.root.geometry() if self.expanded else None
         self.entry.delete(0, "end")
         self.ask(message)
+        if geometry_before_send:
+            self.root.after_idle(lambda: self.root.geometry(geometry_before_send))
+
+    def _send_from_enter(self, _event: object) -> str:
+        self.send_message()
+        return "break"
 
     def ask(self, message: str) -> None:
-        self.expand()
         if not self._ensure_started():
             return
         if self.mode_var.get().lower() in {"screen", "combined"}:
@@ -309,30 +335,46 @@ class CoachApp:
         self.agent_requests.put(("text", message))
 
     def request_screen(self) -> None:
+        geometry_before_capture = self.root.geometry() if self.expanded else None
         self.expand()
         if not self._ensure_started():
+            self._restore_geometry_after_action(geometry_before_capture)
             return
         if self.mode_var.get().lower() == "file":
             self._append(
                 "system",
                 "Screen help is disabled in File mode. Restart in Screen or Combined mode.",
             )
+            self._restore_geometry_after_action(geometry_before_capture)
             return
         self.activity.last_code_activity = time.monotonic()
         self.activity.idle_prompt_sent = False
         self._append("system", "Capturing your primary screen…")
         self.agent_requests.put(("screen", "button or Ctrl+Alt+H request"))
+        self._restore_geometry_after_action(geometry_before_capture)
+
+    def _restore_geometry_after_action(self, geometry: str | None) -> None:
+        if geometry:
+            self.root.after_idle(lambda: self.root.geometry(geometry))
 
     def _agent_worker(self) -> None:
         while True:
             kind, payload = self.agent_requests.get()
             try:
                 if kind == "initialize":
-                    self.coach = make_agent("desktop-practice", self.app_dir / ".coach_sessions")
+                    self.coach = make_agent(
+                        "desktop-practice",
+                        self.app_dir / ".coach_sessions",
+                        str(payload),
+                    )
                     self.events.put(("ready", None))
                     continue
                 if self.coach is None:
-                    self.coach = make_agent("desktop-practice", self.app_dir / ".coach_sessions")
+                    self.coach = make_agent(
+                        "desktop-practice",
+                        self.app_dir / ".coach_sessions",
+                        self.selected_coaching_style,
+                    )
                 if kind == "screen":
                     image = capture_screen(1)
                     response = self.coach(screen_prompt(str(payload), image))

@@ -22,7 +22,8 @@ python .\helper-agent\agent.py --watch .\my-first-agent
 
 While it runs, press `Ctrl+Alt+H` anywhere or type `/screen` to capture your primary
 display and ask for contextual coaching. After you start changing code, the default
-automatic check triggers once if there are no more code changes for 120 seconds.
+automatic check triggers once if there are no more code changes for 300 seconds
+(five minutes).
 Saving code resets that timer.
 
 Screen images are held in memory and sent to Gemini only on a help or idle trigger;
@@ -67,6 +68,13 @@ does not read local project files.
 
 Screen monitoring is trigger-based. iGuru does not continuously upload the display.
 
+Choose a teaching style before monitoring starts:
+
+- **Standard** is the default calm, concise Socratic coach.
+- **Engaging** adds relatable analogies, micro-checkpoints, learner choices,
+  prediction questions, specific encouragement, and completion reflection while
+  continuing to withhold complete solutions.
+
 ## Project structure
 
 ```text
@@ -80,8 +88,13 @@ helper-agent/
     ├── events.py            # Shared event types
     ├── file_monitor.py      # Read-only practice-file watcher
     ├── prompts.py           # Tutoring policy and contextual prompts
-    └── screen_monitor.py    # Screen capture and global hotkey
+    ├── screen_monitor.py    # Screen capture and global hotkey
+    └── tools/               # Controlled Strands tools and learning state
 ```
 
 Both interfaces import the same reusable `iguru` package, so coaching behavior and
 monitoring features can be tested or extended without duplicating implementation.
+
+The Strands agent can call controlled tools for active-window metadata, compact
+learner state, recent attempts, hint history, and intervention evaluation. These
+tools do not expose arbitrary files, shell commands, or unrestricted screen capture.

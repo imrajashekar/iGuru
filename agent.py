@@ -22,7 +22,7 @@ from iguru import (
     watch_files,
     watch_for_stuck,
 )
-from iguru.config import DEFAULT_SCAN_INTERVAL, DEFAULT_STUCK_AFTER, MONITOR_MODES
+from iguru.config import COACHING_STYLES, DEFAULT_SCAN_INTERVAL, DEFAULT_STUCK_AFTER, MONITOR_MODES
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +51,10 @@ def parse_args() -> argparse.Namespace:
         "--mode", choices=MONITOR_MODES, default="combined",
         help="monitor saved files, screen triggers, or both (default: combined)",
     )
+    parser.add_argument(
+        "--coaching-style", choices=COACHING_STYLES, default="standard",
+        help="standard Socratic coaching or a more engaging style (default: standard)",
+    )
     parser.add_argument("--no-screen", action="store_true", help="disable all screen capture")
     return parser.parse_args()
 
@@ -74,7 +78,7 @@ def run() -> None:
         raise SystemExit(f"Watch path is not a directory: {root}")
 
     session_dir = Path(__file__).with_name(".coach_sessions")
-    coach = make_agent(args.session, session_dir)
+    coach = make_agent(args.session, session_dir, args.coaching_style)
     events: EventQueue = queue.Queue()
     activity = ActivityState()
 
@@ -93,6 +97,7 @@ def run() -> None:
             ).start()
 
     print(f"iGuru mode: {mode}")
+    print(f"iGuru coaching style: {args.coaching_style}")
     if mode in {"file", "combined"}:
         print(f"iGuru is watching: {root}")
     print("Edit a code file or ask a question. Commands: /screen, /hint, /status, /help, /quit")
